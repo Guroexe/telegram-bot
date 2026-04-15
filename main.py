@@ -1823,17 +1823,34 @@ def main() -> None:
         @app.on_event("startup")
         async def on_startup():
             """Runs on app startup"""
-            await application.initialize()
-            await application.post_init(application)
-            # Set webhook
-            await application.bot.set_webhook(url=WEBHOOK_URL, drop_pending_updates=False)
-            logger.info(f"✅ Webhook set to {WEBHOOK_URL}")
+            try:
+                await application.initialize()
+                await application.post_init(application)
+                # Set webhook with retry
+                for attempt in range(3):
+                    try:
+                        await application.bot.set_webhook(url=WEBHOOK_URL, drop_pending_updates=False)
+                        logger.info(f"✅ Webhook set to {WEBHOOK_URL}")
+                        break
+                    except Exception as e:
+                        logger.warning(f"Attempt {attempt + 1}/3 to set webhook failed: {e}")
+                        if attempt < 2:
+                            await asyncio.sleep(2)
+                        else:
+                            logger.error(f"Failed to set webhook after 3 attempts")
+                            raise
+            except Exception as e:
+                logger.error(f"Error during startup: {e}", exc_info=True)
+                raise
         
         @app.on_event("shutdown")
         async def on_shutdown_app():
             """Runs on app shutdown"""
-            await application.post_shutdown(application)
-            await application.stop()
+            try:
+                await application.post_shutdown(application)
+                await application.stop()
+            except Exception as e:
+                logger.error(f"Error during shutdown: {e}")
         
         # Run with uvicorn
         uvicorn.run(app, host="0.0.0.0", port=WEBHOOK_PORT, log_level="info")
