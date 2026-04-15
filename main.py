@@ -12,6 +12,7 @@ import os
 import re
 import httpx
 import logging
+import json
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -24,6 +25,10 @@ from telegram.ext import (
 )
 from telegram.constants import ParseMode, ChatAction
 from telegram.error import BadRequest
+from telegram.ext import Updater
+import uvicorn
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 # =================================================================================
 # --- CONFIGURATION & CONSTANTS ---
@@ -61,6 +66,17 @@ MOSCOW_TZ = pytz.timezone('Europe/Moscow')
 # --- Logging ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# --- Webhook Configuration (for Railway/production) ---
+USE_WEBHOOK = os.getenv('USE_WEBHOOK', 'false').lower() == 'true'
+RAILWAY_PUBLIC_DOMAIN = os.getenv('RAILWAY_PUBLIC_DOMAIN', '')
+WEBHOOK_PORT = int(os.getenv('PORT', 8000))
+WEBHOOK_URL = f"https://{RAILWAY_PUBLIC_DOMAIN}/webhook" if RAILWAY_PUBLIC_DOMAIN else None
+
+if USE_WEBHOOK and WEBHOOK_URL:
+    logger.info(f"🌐 Webhook mode enabled. URL: {WEBHOOK_URL}")
+else:
+    logger.info("📡 Polling mode enabled (local/default)")
 
 # --- Cooldown ---
 COMMAND_COOLDOWN = 2
@@ -1778,7 +1794,52 @@ def main() -> None:
     application.add_error_handler(error_handler)
 
     logger.info("Bot is starting...")
-    application.run_polling()
+    
+    # Choose between webhook and polling
+    if USE_WEBHOOK and WEBHOOK_URL:
+        logger.info(f"🔗 Starting bot with webhook mode at {WEBHOOK_URL}")
+        
+        # Setup FastAPI for webhook
+        app = FastAPI()
+        
+        @app.post("/webhook")
+        async def webhook_handler(request: Request):
+            """Handle incoming updates from Telegram"""
+            try:
+                data = await request.json()
+                update = Update.de_json(data, application.bot)
+                if update:
+                    await application.process_update(update)
+                return JSONResponse({"status": "ok"})
+            except Exception as e:
+                logger.error(f"Webhook error: {e}")
+                return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
+        
+        @app.get("/health")
+        async def health_check():
+            """Health check endpoint"""
+            return JSONResponse({"status": "healthy"})
+        
+        @app.on_event("startup")
+        async def on_startup():
+            """Runs on app startup"""
+            await application.initialize()
+            await application.post_init(application)
+            # Set webhook
+            await application.bot.set_webhook(url=WEBHOOK_URL, drop_pending_updates=False)
+            logger.info(f"✅ Webhook set to {WEBHOOK_URL}")
+        
+        @app.on_event("shutdown")
+        async def on_shutdown_app():
+            """Runs on app shutdown"""
+            await application.post_shutdown(application)
+            await application.stop()
+        
+        # Run with uvicorn
+        uvicorn.run(app, host="0.0.0.0", port=WEBHOOK_PORT, log_level="info")
+    else:
+        logger.info("📡 Starting bot with polling mode")
+        application.run_polling()
 
 if __name__ == "__main__":
     main()
