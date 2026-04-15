@@ -153,7 +153,7 @@ def get_gspread_client():
                 client = gspread.authorize(creds)
                 logger.info("✅ Successfully connected to Google Sheets using env credentials (base64).")
                 return client
-            except base64.binascii.Error as e:
+            except ValueError as e:
                 logger.error(f"❌ Base64 decoding error: {e}")
             except json.JSONDecodeError as e:
                 logger.error(f"❌ JSON decoding error: {e}")
@@ -1126,11 +1126,10 @@ async def handle_calendar_callback(update: Update, context: ContextTypes.DEFAULT
             await query.message.reply_text("❌ Эта дата уже прошла! Пожалуйста, выберите будущую дату.", reply_markup=keyboard)
             return
         sheet_name = f"{RUSSIAN_MONTHS[month]} {year}"
-        # Auto-create sheet if it doesn't exist
-        worksheet = await create_sheet_if_not_exists(sheet_name)
+        worksheet = await get_worksheet_cached(sheet_name)
         if not worksheet:
-            await query.answer("Ошибка при создании расписания! Попробуйте позже.", show_alert=True)
-            await query.message.reply_text("❌ Ошибка при создании расписания! Попробуйте позже.", reply_markup=keyboard)
+            await query.answer("Расписание на этот месяц недоступно!", show_alert=True)
+            await query.message.reply_text("❌ Расписание на этот месяц недоступно! Пожалуйста, выберите другой месяц.", reply_markup=keyboard)
             return
         date_header = f"{day} {RUSSIAN_MONTHS[month]}"
         available_slots = await get_available_slots_count(worksheet, date_header)
@@ -1265,10 +1264,9 @@ async def process_rent_booking_final(update: Update, context: ContextTypes.DEFAU
         price = context.user_data.get('selected_price', 0)
         workplace_setup = context.user_data.get('workplace_setup', '')
         
-        # Auto-create sheet if it doesn't exist
-        worksheet = await create_sheet_if_not_exists(date_info['worksheet'])
+        worksheet = await get_worksheet_cached(date_info['worksheet'])
         if not worksheet:
-            await query.answer("❌ Ошибка при создании расписания! Попробуйте позже.", show_alert=True)
+            await query.answer("Ошибка доступа к расписанию!", show_alert=True)
             return
             
         date_header = date_info['header']
@@ -1710,10 +1708,7 @@ async def background_scheduler():
 async def post_init(application: Application) -> None:
     """Runs after the application has been initialized."""
     application.bot_data['http_client'] = httpx.AsyncClient()
-    # Create necessary sheets immediately on startup
-    logger.info("Creating monthly sheets on startup...")
-    await create_monthly_sheets_job()
-    # Then schedule the background job
+    # Schedule background tasks
     asyncio.create_task(background_scheduler())
 
 async def on_shutdown(application: Application) -> None:
