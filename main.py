@@ -229,6 +229,10 @@ else:
 sheets_cache = {}
 
 async def get_worksheet_cached(sheet_name: str):
+    if spreadsheet is None:
+        logger.error(f"Spreadsheet client not available for worksheet {sheet_name}")
+        return None
+    
     now = time.time()
     if sheet_name in sheets_cache:
         worksheet, timestamp = sheets_cache[sheet_name]
