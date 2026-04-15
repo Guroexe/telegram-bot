@@ -1,0 +1,6 @@
+● ikona-ai.service - IKONA AI Telegram Bot
+     Loaded: loaded (]8;;file://cv4866745.novalocal/etc/systemd/system/ikona-ai.service/etc/systemd/system/ikona-ai.service]8;;; [0;1;38;5;185mdisabled[0m; preset: [0;1;32menabled[0m)
+     Active: activating (auto-restart) (Result: exit-code) since Wed 2025-07-16 22:40:03 MSK; 6s ago
+    Process: 100055 ExecStart=/root/ikona_ai/venv/bin/python /root/ikona_ai/main.py [0;1;31m(code=exited, status=1/FAILURE)[0m
+   Main PID: 100055 (code=exited, status=1/FAILURE)
+        CPU: 40ms

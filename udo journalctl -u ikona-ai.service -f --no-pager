@@ -1,0 +1,12 @@
+[0;1;32m●[0m ikona-ai.service - IKONA AI Telegram Bot
+     Loaded: loaded (]8;;file://cv4866745.novalocal/etc/systemd/system/ikona-ai.service/etc/systemd/system/ikona-ai.service]8;;; [0;1;38;5;185mdisabled[0m; preset: [0;1;32menabled[0m)
+     Active: [0;1;32mactive (running)[0m since Wed 2025-07-16 23:03:24 MSK; 1s ago
+   Main PID: 100567 (python)
+      Tasks: 1 (limit: 1124)
+     Memory: 39.4M (peak: 39.6M)
+        CPU: 713ms
+     CGroup: /system.slice/ikona-ai.service
+             └─[0;38;5;245m100567 /root/ikona_ai/venv/bin/python /root/ikona_ai/main.py[0m
+
+Jul 16 23:03:24 cv4866745.novalocal systemd[1]: Started ikona-ai.service - IKONA AI Telegram Bot.
+Jul 16 23:03:25 cv4866745.novalocal python[100567]: 2025-07-16 23:03:25,217 - __main__ - INFO - Successfully connected to Google Sheets.
