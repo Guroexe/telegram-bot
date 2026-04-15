@@ -131,20 +131,92 @@ BASE_RETRY_DELAY = 60
 
 def get_gspread_client():
     try:
+        import base64
+        import json
+        
         scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        creds = Credentials.from_service_account_file(GOOGLE_SHEETS_CREDS_FILE, scopes=scopes)
-        client = gspread.authorize(creds)
-        logger.info("Successfully connected to Google Sheets.")
-        return client
-    except FileNotFoundError:
-        logger.error(f"Google Sheets credentials file not found: {GOOGLE_SHEETS_CREDS_FILE}")
-        return None
+        
+        # Try to use environment variable first (for Railway/production)
+        credentials_base64 = os.environ.get('GOOGLE_CREDENTIALS_BASE64')
+        if credentials_base64:
+            logger.info(f"Found GOOGLE_CREDENTIALS_BASE64 env var (length: {len(credentials_base64)})")
+            try:
+                # Decode base64
+                credentials_bytes = base64.b64decode(credentials_base64)
+                credentials_json = credentials_bytes.decode('utf-8')
+                credentials_info = json.loads(credentials_json)
+                
+                logger.info(f"Decoded credentials for project: {credentials_info.get('project_id', 'UNKNOWN')}")
+                logger.info(f"Client email: {credentials_info.get('client_email', 'UNKNOWN')}")
+                
+                creds = Credentials.from_service_account_info(credentials_info, scopes=scopes)
+                client = gspread.authorize(creds)
+                logger.info("✅ Successfully connected to Google Sheets using env credentials (base64).")
+                return client
+            except base64.binascii.Error as e:
+                logger.error(f"❌ Base64 decoding error: {e}")
+            except json.JSONDecodeError as e:
+                logger.error(f"❌ JSON decoding error: {e}")
+            except Exception as e:
+                logger.error(f"❌ Failed to load credentials from base64: {e}", exc_info=True)
+        else:
+            logger.warning("⚠️ GOOGLE_CREDENTIALS_BASE64 environment variable not found!")
+        
+        # Try JSON string from environment
+        credentials_json_str = os.environ.get('GOOGLE_CREDENTIALS')
+        if credentials_json_str:
+            logger.info("Found GOOGLE_CREDENTIALS env var (JSON string)...")
+            try:
+                credentials_info = json.loads(credentials_json_str)
+                logger.info(f"Decoded credentials for project: {credentials_info.get('project_id', 'UNKNOWN')}")
+                creds = Credentials.from_service_account_info(credentials_info, scopes=scopes)
+                client = gspread.authorize(creds)
+                logger.info("✅ Successfully connected to Google Sheets using env credentials (JSON).")
+                return client
+            except Exception as e:
+                logger.error(f"❌ Failed to load credentials from JSON env: {e}", exc_info=True)
+        else:
+            logger.warning("⚠️ GOOGLE_CREDENTIALS environment variable not found!")
+        
+        # Fallback to file (for local development)
+        logger.info(f"Attempting to use credentials from file: {GOOGLE_SHEETS_CREDS_FILE}")
+        if os.path.exists(GOOGLE_SHEETS_CREDS_FILE):
+            creds = Credentials.from_service_account_file(GOOGLE_SHEETS_CREDS_FILE, scopes=scopes)
+            client = gspread.authorize(creds)
+            logger.info("✅ Successfully connected to Google Sheets using file credentials.")
+            return client
+        else:
+            logger.error(f"❌ Credentials file not found: {GOOGLE_SHEETS_CREDS_FILE}")
+            return None
+            
     except Exception as e:
-        logger.error(f"Failed to connect to Google Sheets: {e}")
+        logger.error(f"❌ Failed to connect to Google Sheets: {e}", exc_info=True)
         return None
 
 gspread_client = get_gspread_client()
-spreadsheet = gspread_client.open_by_key(GOOGLE_SHEET_ID) if gspread_client else None
+
+# Try to open the spreadsheet with retries
+spreadsheet = None
+if gspread_client:
+    for attempt in range(3):
+        try:
+            logger.info(f"Attempting to open spreadsheet (attempt {attempt + 1}/3)...")
+            spreadsheet = gspread_client.open_by_key(GOOGLE_SHEET_ID)
+            logger.info("✅ Spreadsheet opened successfully.")
+            break
+        except Exception as e:
+            logger.error(f"❌ Attempt {attempt + 1} failed to open spreadsheet: {e}")
+            if attempt < 2:
+                import time as time_module
+                wait_time = 5 * (attempt + 1)
+                logger.info(f"Waiting {wait_time} seconds before retry...")
+                time_module.sleep(wait_time)
+            else:
+                logger.error("❌ Failed to open spreadsheet after 3 attempts.")
+                spreadsheet = None
+else:
+    logger.error("❌ Cannot open spreadsheet: gspread_client is None")
+
 sheets_cache = {}
 
 async def get_worksheet_cached(sheet_name: str):
