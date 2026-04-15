@@ -141,13 +141,22 @@ def get_gspread_client():
         if credentials_base64:
             logger.info(f"Found GOOGLE_CREDENTIALS_BASE64 env var (length: {len(credentials_base64)})")
             try:
-                # Decode base64
-                credentials_bytes = base64.b64decode(credentials_base64)
+                # Decode base64 - normalize it first
+                credentials_base64_clean = credentials_base64.strip()
+                credentials_bytes = base64.b64decode(credentials_base64_clean)
                 credentials_json = credentials_bytes.decode('utf-8')
                 credentials_info = json.loads(credentials_json)
                 
+                # Validate that we got a proper private key
+                private_key = credentials_info.get('private_key', '')
+                if not private_key.startswith('-----BEGIN'):
+                    logger.error(f"❌ Private key malformed! Starts with: {private_key[:50]}")
+                    return None
+                
                 logger.info(f"Decoded credentials for project: {credentials_info.get('project_id', 'UNKNOWN')}")
                 logger.info(f"Client email: {credentials_info.get('client_email', 'UNKNOWN')}")
+                logger.info(f"Private key length: {len(private_key)}")
+                logger.info(f"Private key format OK: {private_key.startswith('-----BEGIN PRIVATE KEY-----')}")
                 
                 creds = Credentials.from_service_account_info(credentials_info, scopes=scopes)
                 client = gspread.authorize(creds)
